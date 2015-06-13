@@ -1,32 +1,36 @@
 package org.gradle;
 
-import java.util.List;
-import java.util.Properties;
-import java.util.Date;
-import java.util.Locale;
 import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
+import java.util.List;
+import java.util.Locale;
+import java.util.Properties;
 
+import javax.mail.Address;
 import javax.mail.BodyPart;
-import javax.mail.Multipart;
-import javax.mail.Session;
-import javax.mail.MessagingException;
-import javax.mail.Store;
 import javax.mail.Folder;
 import javax.mail.Message;
+import javax.mail.MessagingException;
+import javax.mail.Multipart;
 import javax.mail.NoSuchProviderException;
-import javax.mail.Address;
+import javax.mail.Part;
+import javax.mail.Session;
+import javax.mail.Store;
 import javax.mail.internet.MimeMessage;
 
-import java.text.SimpleDateFormat;
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
 
 public class DellAckEmail {
 	
 	private static final String HOST = "imap.gmail.com";
 	private static final String USERNAME = "waldenlaker";
 	private static final String PASSWORD = "538552Cyx";
+	private static final String COMMA_DELIMITER = ";";
+	private static final String NEW_LINE_SEPARATOR = "\n";
 
 	public static void main(String[] args) {
 		// TODO Auto-generated method stub
@@ -40,7 +44,7 @@ public class DellAckEmail {
         BufferedWriter myWriter = null;
         try {
              myWriter = new BufferedWriter( new FileWriter( "/home/ethan/Documents/DellAck.csv" ) );
-             myWriter.write( "\"Sent Date\",\"Subject\",\"From\",\"E-Mail\",\"Phone Number\",\"Skills & Interests\",\"Comments\"\n" );
+             myWriter.write( "\"Product Name\";\"Quantity\";\"Price\";\"Account\"\n" );
         }
         catch ( IOException myIOE ) {
              myIOE.printStackTrace();
@@ -76,27 +80,46 @@ public class DellAckEmail {
         					String sentDate = myFormatter.format( message.getSentDate() );
         					
         					MimeMessage myMimeMessage = (MimeMessage) message;
+        					String messageContent = null;
         					//System.out.print(myMimeMessage);
         					
         					try{
         						//Object obj = message.getContent();
-        						Multipart mp = (Multipart) message.getContent();
+        						Multipart mp = (Multipart) myMimeMessage.getContent();
         						for(int i=0;i<mp.getCount();i++) {
-        							System.out.println("test1");
         						    BodyPart bodyPart = mp.getBodyPart(i);
-        						    if ("text/html".equals(bodyPart.getContentType())) {
-        						    	System.out.println("test2");
-        						        String s = (String) bodyPart.getContent();
-        						        System.out.println(s);
-        						    }
+        						    if (getText(bodyPart) != null){
+        						    	messageContent = getText(bodyPart);
+        						    	break;
+        						    }    
         						}
         						
+        						//System.out.print(messageContent);
+        						Document htmldom = Jsoup.parse(messageContent);
+        						List<Element> rows = htmldom.select("tr");
+        						for(int n=0; n< rows.size(); n++){
+        							if (n == 0){
+        								continue;
+        							}
+        							List<Element> cells = rows.get(n).select("td");
+        							for(int i=0; i < cells.size(); i++){
+        								myWriter.append(cells.get(i).text());
+        								if (i == cells.size() - 1){
+        									myWriter.append(NEW_LINE_SEPARATOR);
+        								} else{
+        									myWriter.append(COMMA_DELIMITER);
+        								}
+        								
+        							}
+        							
+        				        }
         						
-        						//String messageContent = (String) myMimeMessage.getContent();
-        						//String messageContentLines[] = messageContent.split("\n");
+        						String messageContentLines[] = messageContent.split("\n");
+        						System.out.println(messageContentLines.length);
         						
         						//for (String line: messageContentLines){
         						//	System.out.println(line);
+        						//	System.out.println("");
         						//}
         					}
         					
@@ -118,6 +141,51 @@ public class DellAckEmail {
             e.printStackTrace();
         }
         
+        try {
+           myWriter.close();
+        }
+        catch ( IOException myIOE ) {
+           myIOE.printStackTrace();
+        }
+        
+	}
+	
+	private static String getText(Part p) throws MessagingException, IOException {
+		if (p.isMimeType("text/*")) {
+			String s = (String)p.getContent();
+			//textIsHtml = p.isMimeType("text/html");
+			return s;
+		}
+
+		if (p.isMimeType("multipart/alternative")) {
+			// prefer html text over plain text
+			Multipart mp = (Multipart) p.getContent();
+			String text = null;
+			for (int i = 0; i < mp.getCount(); i++) {
+				Part bp = mp.getBodyPart(i);
+				if (bp.isMimeType("text/plain")) {
+					if (text == null)
+						text = getText(bp);
+					continue;
+				} else if (bp.isMimeType("text/html")) {
+					String s = getText(bp);
+					if (s != null)
+						return s;
+				} else {
+					return getText(bp);
+				}
+			}
+			return text;
+		} else if (p.isMimeType("multipart/*")) {
+			Multipart mp = (Multipart)p.getContent();
+			for (int i = 0; i < mp.getCount(); i++) {
+				String s = getText(mp.getBodyPart(i));
+				if (s != null)
+					return s;
+			}
+		}
+
+		return null;
 	}
 
 }
